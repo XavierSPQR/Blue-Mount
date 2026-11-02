@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# firebase emulators (Phase 8 rules tests)
+.firebase/
+firestore-debug.log
+firebase-debug.log
+ui-debug.log

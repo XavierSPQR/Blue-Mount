@@ -1,0 +1,158 @@
+rules_version = '2';
+
+// PHASE 8: closes a gap found while writing rules tests — `active` was
+// never checked here, only in the app layer (AuthContext signs a
+// deactivated user out client-side). Since we never disable the underlying
+// Firebase Auth account, only flip a Firestore flag, a deactivated user's
+// ID token stays valid — so every role check now also requires `active`,
+// meaning deactivation actually revokes rules-permitted access, not just
+// what the UI shows. See tests/rules/firestore.rules.test.ts.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function hasProfile() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function myProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Signed in, has a profile doc, AND that profile is active. Every role
+    // check below goes through this, so a deactivated account loses all
+    // rules-permitted access immediately — not just app-layer UI access.
+    function isActive() {
+      return hasProfile() && myProfile().active == true;
+    }
+
+    function isAdmin() {
+      return isActive() && myProfile().role == 'admin';
+    }
+
+    function isCollector() {
+      return isActive() && myProfile().role == 'collector';
+    }
+
+    function isSupplier() {
+      return isActive() && myProfile().role == 'supplier';
+    }
+
+    // A supplier/collector's own linked ID (e.g. "SUP-0001") as recorded on
+    // their users/{uid} profile — what collections entries are keyed by.
+    function myLinkedId() {
+      return myProfile().linkedId;
+    }
+
+    match /users/{uid} {
+      // Reading your OWN profile must stay independent of `active` — that's
+      // exactly how the app detects deactivation and signs itself out.
+      // Admins can read/create/update anyone's (to list, provision, deactivate).
+      allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if false; // deactivate via `active: false`, never delete
+    }
+
+    match /suppliers/{supplierId} {
+      // Admin manages everything; collectors need the roster to record
+      // collections against (Phase 3); a supplier can read their own record.
+      allow read: if isAdmin() || isCollector() ||
+        (isSupplier() && resource.data.authUid == request.auth.uid);
+      allow create, update: if isAdmin();
+      allow delete: if false; // deactivate via `active: false`, never delete
+    }
+
+    match /collectors/{collectorId} {
+      allow read: if isAdmin() || (isCollector() && resource.data.authUid == request.auth.uid);
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+
+    match /counters/{counterId} {
+      // Backs generateSequentialId() — admin-only, touched inside a
+      // transaction when registering a supplier/collector.
+      allow read, write: if isAdmin();
+    }
+
+    match /collections/{entryId} {
+      // A collector can only ever write entries under their own collectorId,
+      // attributed to themself — never on another collector's behalf, and
+      // never backdated to a different collector after the fact (no update).
+      allow create: if isCollector() &&
+        request.resource.data.collectorId == myLinkedId() &&
+        request.resource.data.createdBy == request.auth.uid &&
+        request.resource.data.quantityKg is number &&
+        request.resource.data.quantityKg > 0 &&
+        request.resource.data.gradeId is string &&
+        request.resource.data.gradeId.size() > 0;
+      allow read: if isAdmin() ||
+        (isCollector() && resource.data.collectorId == myLinkedId()) ||
+        (isSupplier() && resource.data.supplierId == myLinkedId());
+      allow update, delete: if false; // append-only ledger; corrections land as a later feature, not silent edits
+    }
+
+    match /requests/{id} {
+      // A supplier can only ever file a new request as 'pending' under
+      // their own supplierId — approve/reject/fulfilled transitions are
+      // admin-only (decideRequest / fulfillRequest never run as the supplier).
+      allow create: if isSupplier() &&
+        request.resource.data.supplierId == myLinkedId() &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.quantity is number &&
+        request.resource.data.quantity > 0;
+      allow read: if isAdmin() || (isSupplier() && resource.data.supplierId == myLinkedId());
+      allow update: if isAdmin();
+      allow delete: if false;
+    }
+
+    match /advances/{id} {
+      allow create: if isSupplier() &&
+        request.resource.data.supplierId == myLinkedId() &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.amount is number &&
+        request.resource.data.amount > 0;
+      allow read: if isAdmin() || (isSupplier() && resource.data.supplierId == myLinkedId());
+      allow update: if isAdmin();
+      allow delete: if false;
+    }
+
+    match /deductions/{id} {
+      // Never created directly by a client call — always the second write
+      // inside fulfillRequest()/approveAdvance()'s transaction, run as admin.
+      allow read: if isAdmin() || (isSupplier() && resource.data.supplierId == myLinkedId());
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+
+    match /grades/{gradeId} {
+      // Collectors need the list to populate the grade picker on Add Collection.
+      allow read: if isAdmin() || isCollector();
+      allow create, update: if isAdmin();
+      allow delete: if false; // retire via `active: false`, never delete — old collections still reference it
+    }
+
+    match /rateHistory/{id} {
+      // Admin-only for now — supplier-facing "current rate" visibility can
+      // be added later without weakening anything else.
+      allow read: if isAdmin();
+      allow create: if isAdmin();
+      allow update, delete: if false; // append-only ledger — superseded by a newer entry, never edited/removed
+    }
+
+    match /payslips/{id} {
+      // generatePayslip() writes this and updates the deductions it absorbs
+      // in one batch — both under isAdmin(), so no separate rule needed on
+      // the deductions side for that write.
+      allow read: if isAdmin() || (isSupplier() && resource.data.supplierId == myLinkedId());
+      allow create: if isAdmin();
+      allow update, delete: if false; // immutable snapshot — a correction is a new pay slip, not an edit
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,36 +1,39 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Blue Mount Tea
 
-## Getting Started
+Tea leaf collection, supplier/collector management, and pay slip generation for Blue Mount — a Next.js static export on Firebase Hosting (Spark/free plan), backed by Firestore + Auth. See `IMPLEMENTATION_PLAN.md` for the full architecture, phase-by-phase build log, and the assumptions/decisions behind it.
 
-First, run the development server:
+## Getting started
 
 ```bash
+npm install
+cp .env.example .env.local   # fill in from `firebase apps:sdkconfig WEB <appId>`
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Build & deploy
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run build                # static export to out/
+firebase deploy --only firestore:rules,firestore:indexes,hosting
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Testing the Firestore security rules
 
-## Learn More
+Rules are the real backend authorization layer here (see `firestore.rules` and `IMPLEMENTATION_PLAN.md` Phase 8) — they're unit-tested against the Firestore emulator, not just trusted by inspection.
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm run test:rules
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+This spins up the Firestore emulator (via `firebase emulators:exec`) and runs `tests/rules/firestore.rules.test.ts` against it with `@firebase/rules-unit-testing`.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+**Requires a JDK 21+ on `PATH`** (the Firestore emulator's runtime requirement) — this repo was built in an environment with only JDK 17 installed, so a portable JDK 21 was used instead of a system package:
 
-## Deploy on Vercel
+```bash
+mkdir -p ~/.local/jdk && cd ~/.local/jdk
+curl -sL "https://api.adoptium.net/v3/binary/latest/21/ga/linux/x64/jdk/hotspot/normal/eclipse" -o jdk21.tar.gz
+tar xzf jdk21.tar.gz && rm jdk21.tar.gz
+export JAVA_HOME=~/.local/jdk/jdk-21* PATH="$JAVA_HOME/bin:$PATH"   # add to your shell profile to persist
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+If `java -version` on your machine is already 21+, skip straight to `npm run test:rules`.
