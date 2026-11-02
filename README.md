@@ -1,6 +1,6 @@
-# Blue Mount Tea
+# Blue Hills Tea Factory
 
-Tea leaf collection, supplier/collector management, and pay slip generation for Blue Mount — a Next.js static export on Firebase Hosting (Spark/free plan), backed by Firestore + Auth. See `IMPLEMENTATION_PLAN.md` for the full architecture, phase-by-phase build log, and the assumptions/decisions behind it.
+Tea leaf collection, supplier/collector management, and pay slip generation for Blue Hills Tea Factory — a Next.js static export on Firebase Hosting (Spark/free plan), backed by Firestore + Auth. See `IMPLEMENTATION_PLAN.md` for the full architecture, phase-by-phase build log, and the assumptions/decisions behind it.
 
 ## Getting started
 

@@ -1,4 +1,4 @@
-# Blue Mount Tea — Implementation Plan
+# Blue Hills Tea Factory — Implementation Plan
 
 Decisions locked in from clarification round:
 
