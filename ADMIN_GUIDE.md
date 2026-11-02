@@ -1,4 +1,4 @@
-# Blue Mount Tea — Admin Guide
+# Blue Hills Tea Factory — Admin Guide
 
 Live app: **https://blue-mount-5e5a6.web.app**
 

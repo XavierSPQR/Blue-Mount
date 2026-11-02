@@ -1,1 +1,1 @@
-export const COMPANY_NAME = "New Blue Mount";
+export const COMPANY_NAME = "Blue Hills Tea Factory";
